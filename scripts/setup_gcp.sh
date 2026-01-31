@@ -46,6 +46,12 @@ echo ""
 
 gcloud config set project "$PROJECT"
 
+# ── 0. Enable required APIs ──────────────────────────────────
+echo "0/5  Enabling required GCP APIs..."
+gcloud services enable pubsub.googleapis.com logging.googleapis.com --quiet
+echo "     Pub/Sub and Cloud Logging APIs enabled."
+echo ""
+
 # ── 1. Create Pub/Sub Topic ─────────────────────────────────
 echo "1/5  Creating Pub/Sub topic: $TOPIC"
 if gcloud pubsub topics describe "$TOPIC" &>/dev/null; then

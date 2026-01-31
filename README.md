@@ -74,8 +74,9 @@ Two bridge implementations are provided:
 
 **OCI requirements:**
 - Tenancy with Streaming and Log Analytics services enabled
-- API signing key configured (`~/.oci/config` or `OCI_KEY_FILE` / `OCI_KEY_CONTENT`)
-- IAM policies: user must manage streams, log-analytics, and service-connectors in the target compartment
+- **Log Analytics onboarded** (OCI Console > Observability & Management > Log Analytics > "Start Using Log Analytics")
+- API signing key configured (`oci setup config`) and **public key uploaded** to OCI Console (Identity > Users > API Keys)
+- IAM policies: user must manage streams, log-analytics, and service-connectors in the target compartment (see [QUICKSTART.md](docs/QUICKSTART.md#required-iam-policies-oci))
 
 ## Quick Start
 
@@ -127,6 +128,7 @@ For a guided deployment via the OCI Console:
 
 3. **Create Log Analytics custom content** (parser, fields, source):
    ```bash
+   pip install oci    # if not already installed
    export LA_NAMESPACE="<your-namespace>"
    export OCI_COMPARTMENT_ID="<your-compartment-ocid>"
    python3 stack/scripts/setup_log_analytics.py
