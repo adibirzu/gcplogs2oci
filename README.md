@@ -36,6 +36,7 @@ Two bridge implementations are provided:
 │   ├── setup_oci.sh         # Provision OCI resources (stream, log group, parser, source, SCH)
 │   ├── destroy_gcp.sh       # Tear down all GCP resources (reverse of setup)
 │   ├── destroy_oci.sh       # Tear down all OCI resources (reverse of setup)
+│   ├── status.sh            # Audit all resources and configuration
 │   ├── test_gcp_credentials.py  # Validate GCP auth
 │   ├── test_oci_credentials.py  # Validate OCI auth
 │   ├── publish_test_message.py  # Publish sample logs to Pub/Sub
@@ -103,15 +104,54 @@ gcloud auth application-default login
 python scripts/test_gcp_credentials.py
 python scripts/test_oci_credentials.py
 
-# 7. Test end-to-end
+# 7. Check infrastructure status
+./scripts/status.sh
+
+# 8. Test end-to-end
 python scripts/publish_test_message.py --count 5
 python -m bridge.main --drain
 
-# 8. Run continuously
+# 9. Run continuously
 python -m bridge.main
 ```
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
+
+## Managing Infrastructure
+
+### Status audit
+
+Check the state of all provisioned resources, credentials, and configuration:
+
+```bash
+./scripts/status.sh
+```
+
+Reports `[OK]`, `[WARN]`, or `[FAIL]` for each resource across GCP, OCI, and bridge config. Exit code is the number of failures (0 = all healthy).
+
+### Tear down
+
+Remove all resources created by the setup scripts:
+
+```bash
+# Interactive (asks for confirmation)
+./scripts/destroy_gcp.sh
+./scripts/destroy_oci.sh
+
+# Non-interactive (CI / scripted teardown)
+./scripts/destroy_gcp.sh --force
+./scripts/destroy_oci.sh --force
+```
+
+Deletion order respects resource dependencies (e.g., Service Connector Hub is deleted before Stream). Both scripts handle already-deleted resources gracefully.
+
+### Full reset cycle
+
+```bash
+./scripts/destroy_oci.sh --force && ./scripts/destroy_gcp.sh --force
+./scripts/setup_gcp.sh && ./scripts/setup_oci.sh
+./scripts/status.sh
+```
 
 ## OCI Resource Manager (Terraform) Deployment
 

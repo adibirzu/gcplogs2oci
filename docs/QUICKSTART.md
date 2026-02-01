@@ -239,3 +239,33 @@ Once logs are flowing, use these sample queries in the OCI Console (Log Explorer
 ```
 
 See the [Architecture doc](ARCHITECTURE.md) for the full field mapping reference.
+
+## 7. Status Audit
+
+Check the health of all provisioned resources, credentials, and bridge configuration:
+
+```bash
+./scripts/status.sh
+```
+
+The script checks every GCP and OCI resource, reports `[OK]`, `[WARN]`, or `[FAIL]` for each, and provides a summary with next-step guidance.
+
+## 8. Tear Down
+
+To remove all resources created by the setup scripts (useful for testing or cleanup):
+
+```bash
+# Interactive — asks for confirmation before deleting
+./scripts/destroy_gcp.sh
+./scripts/destroy_oci.sh
+
+# Non-interactive — skip confirmation (CI/scripted teardown)
+./scripts/destroy_gcp.sh --force
+./scripts/destroy_oci.sh --force
+```
+
+**Deletion order matters.** The scripts handle this automatically:
+- OCI: SCH → Source → Parser → Fields → Log Group → Stream → Stream Pool
+- GCP: Sink → Subscription → Topic → Service Account → Key file
+
+After destroying, you can re-run `setup_gcp.sh` and `setup_oci.sh` for a clean re-deployment.
