@@ -34,6 +34,8 @@ Two bridge implementations are provided:
 ├── scripts/
 │   ├── setup_gcp.sh         # Provision GCP resources (topic, sub, sink, SA)
 │   ├── setup_oci.sh         # Provision OCI resources (stream, log group, parser, source, SCH)
+│   ├── destroy_gcp.sh       # Tear down all GCP resources (reverse of setup)
+│   ├── destroy_oci.sh       # Tear down all OCI resources (reverse of setup)
 │   ├── test_gcp_credentials.py  # Validate GCP auth
 │   ├── test_oci_credentials.py  # Validate OCI auth
 │   ├── publish_test_message.py  # Publish sample logs to Pub/Sub
