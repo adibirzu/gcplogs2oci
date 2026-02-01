@@ -4,7 +4,7 @@
 #
 # Prerequisites:
 #   - gcloud CLI authenticated (gcloud auth login)
-#   - .env.local populated with GCP_PROJECT_ID at minimum
+#   - .env.local populated (GCP_PROJECT_ID auto-detected if not set)
 #
 # Usage:
 #   ./scripts/setup_gcp.sh
@@ -26,7 +26,52 @@ else
     exit 1
 fi
 
-PROJECT="${GCP_PROJECT_ID:?GCP_PROJECT_ID is required}"
+# ── Interactive GCP project selection ──────────────────────
+if [ -z "${GCP_PROJECT_ID:-}" ]; then
+    if [ -t 0 ]; then
+        echo "GCP_PROJECT_ID is not set. Detecting available projects..."
+        echo ""
+        mapfile -t PROJECTS < <(gcloud projects list --format='value(projectId)' --sort-by=projectId 2>/dev/null)
+        if [ ${#PROJECTS[@]} -eq 0 ]; then
+            echo "ERROR: No GCP projects found. Ensure gcloud is authenticated (gcloud auth login)."
+            exit 1
+        fi
+        echo "  Available GCP Projects:"
+        for i in "${!PROJECTS[@]}"; do
+            printf "    %d) %s\n" "$((i+1))" "${PROJECTS[$i]}"
+        done
+        echo ""
+        while true; do
+            read -rp "  Select a project [1-${#PROJECTS[@]}]: " choice
+            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#PROJECTS[@]}" ]; then
+                GCP_PROJECT_ID="${PROJECTS[$((choice-1))]}"
+                echo "  Selected: $GCP_PROJECT_ID"
+                echo ""
+                # Offer to save to .env.local
+                if [ -f "$PROJECT_DIR/.env.local" ]; then
+                    read -rp "  Save GCP_PROJECT_ID=$GCP_PROJECT_ID to .env.local? [Y/n]: " save_choice
+                    if [[ ! "$save_choice" =~ ^[nN] ]]; then
+                        if grep -q '^GCP_PROJECT_ID=' "$PROJECT_DIR/.env.local"; then
+                            sed -i.bak "s|^GCP_PROJECT_ID=.*|GCP_PROJECT_ID=\"$GCP_PROJECT_ID\"|" "$PROJECT_DIR/.env.local"
+                            rm -f "$PROJECT_DIR/.env.local.bak"
+                        else
+                            echo "GCP_PROJECT_ID=\"$GCP_PROJECT_ID\"" >> "$PROJECT_DIR/.env.local"
+                        fi
+                        echo "  Saved to .env.local"
+                    fi
+                fi
+                break
+            else
+                echo "  Invalid selection. Enter a number between 1 and ${#PROJECTS[@]}."
+            fi
+        done
+    else
+        echo "ERROR: GCP_PROJECT_ID is required (set in .env.local or export it)."
+        exit 1
+    fi
+fi
+
+PROJECT="$GCP_PROJECT_ID"
 TOPIC="${GCP_PUBSUB_TOPIC:-oci-log-export-topic}"
 SUBSCRIPTION="${GCP_PUBSUB_SUBSCRIPTION:-fluentd-oci-bridge-sub}"
 SINK_NAME="${GCP_LOG_SINK_NAME:-gcp-to-oci-sink}"

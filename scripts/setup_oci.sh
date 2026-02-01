@@ -78,48 +78,150 @@ if [ -z "$NAMESPACE" ]; then
     echo "  Namespace: $NAMESPACE"
 fi
 
-# ── 1. Create Stream Pool ───────────────────────────────────
-echo ""
-echo "1/7  Creating Stream Pool: $STREAM_POOL_NAME"
-EXISTING_POOL=$(oci streaming admin stream-pool list \
-    --compartment-id "$COMPARTMENT" \
-    --name "$STREAM_POOL_NAME" \
-    --lifecycle-state ACTIVE \
-    --query 'data[0].id' --raw-output 2>/dev/null || true)
+# ── Interactive stream selection ───────────────────────────
+SKIP_STREAM_CREATION=false
 
-if [ -n "$EXISTING_POOL" ] && [ "$EXISTING_POOL" != "null" ]; then
-    POOL_ID="$EXISTING_POOL"
-    echo "     Pool already exists: ${POOL_ID:0:50}..."
+if [ -n "${OCI_STREAM_OCID:-}" ]; then
+    # Stream OCID provided via env — verify it exists and get pool ID
+    echo ""
+    echo "OCI_STREAM_OCID is set. Verifying stream..."
+    STREAM_INFO=$(oci streaming admin stream get --stream-id "$OCI_STREAM_OCID" 2>/dev/null || true)
+    if [ -z "$STREAM_INFO" ]; then
+        echo "ERROR: Stream $OCI_STREAM_OCID not found or not accessible."
+        exit 1
+    fi
+    STREAM_ID="$OCI_STREAM_OCID"
+    POOL_ID=$(echo "$STREAM_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['stream-pool-id'])")
+    STREAM_NAME=$(echo "$STREAM_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['name'])")
+    echo "  Using stream: $STREAM_NAME (${STREAM_ID:0:50}...)"
+    echo "  Stream pool:  ${POOL_ID:0:50}..."
+    SKIP_STREAM_CREATION=true
+elif [ -t 0 ]; then
+    # Interactive mode — list existing streams and let user choose
+    echo ""
+    echo "Checking for existing streams in compartment..."
+    STREAM_JSON=$(oci streaming admin stream list \
+        --compartment-id "$COMPARTMENT" \
+        --lifecycle-state ACTIVE \
+        --all \
+        --query 'data[].{name:name, id:id}' 2>/dev/null || echo "[]")
+
+    mapfile -t STREAM_NAMES < <(echo "$STREAM_JSON" | python3 -c "
+import sys, json
+streams = json.load(sys.stdin)
+for s in streams:
+    print(s['name'])
+" 2>/dev/null || true)
+
+    mapfile -t STREAM_IDS < <(echo "$STREAM_JSON" | python3 -c "
+import sys, json
+streams = json.load(sys.stdin)
+for s in streams:
+    print(s['id'])
+" 2>/dev/null || true)
+
+    if [ ${#STREAM_NAMES[@]} -gt 0 ]; then
+        echo ""
+        echo "  Existing streams in compartment:"
+        for i in "${!STREAM_NAMES[@]}"; do
+            printf "    %d) %s  (%s...)\n" "$((i+1))" "${STREAM_NAMES[$i]}" "${STREAM_IDS[$i]:0:50}"
+        done
+        CREATE_IDX=$(( ${#STREAM_NAMES[@]} + 1 ))
+        printf "    %d) [Create a new stream]\n" "$CREATE_IDX"
+        echo ""
+        while true; do
+            read -rp "  Select a stream [1-$CREATE_IDX]: " choice
+            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$CREATE_IDX" ]; then
+                break
+            else
+                echo "  Invalid selection. Enter a number between 1 and $CREATE_IDX."
+            fi
+        done
+
+        if [ "$choice" -lt "$CREATE_IDX" ]; then
+            # User selected an existing stream
+            STREAM_ID="${STREAM_IDS[$((choice-1))]}"
+            STREAM_NAME="${STREAM_NAMES[$((choice-1))]}"
+            echo "  Selected: $STREAM_NAME"
+            echo ""
+            # Look up the stream pool ID from the selected stream
+            STREAM_DETAIL=$(oci streaming admin stream get --stream-id "$STREAM_ID")
+            POOL_ID=$(echo "$STREAM_DETAIL" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['stream-pool-id'])")
+            echo "  Stream pool: ${POOL_ID:0:50}..."
+            SKIP_STREAM_CREATION=true
+
+            # Offer to save to .env.local
+            if [ -f "$PROJECT_DIR/.env.local" ]; then
+                read -rp "  Save OCI_STREAM_OCID to .env.local? [Y/n]: " save_choice
+                if [[ ! "$save_choice" =~ ^[nN] ]]; then
+                    if grep -q '^OCI_STREAM_OCID=' "$PROJECT_DIR/.env.local"; then
+                        sed -i.bak "s|^OCI_STREAM_OCID=.*|OCI_STREAM_OCID=\"$STREAM_ID\"|" "$PROJECT_DIR/.env.local"
+                        rm -f "$PROJECT_DIR/.env.local.bak"
+                    else
+                        echo "OCI_STREAM_OCID=\"$STREAM_ID\"" >> "$PROJECT_DIR/.env.local"
+                    fi
+                    echo "  Saved to .env.local"
+                fi
+            fi
+        else
+            echo "  Creating a new stream..."
+        fi
+    else
+        echo "  No existing streams found. Creating a new one..."
+    fi
+fi
+
+# ── 1. Create Stream Pool ───────────────────────────────────
+if [ "$SKIP_STREAM_CREATION" = true ]; then
+    echo ""
+    echo "1/7  Stream Pool: using existing (from selected stream)"
 else
-    POOL_ID=$(oci streaming admin stream-pool create \
+    echo ""
+    echo "1/7  Creating Stream Pool: $STREAM_POOL_NAME"
+    EXISTING_POOL=$(oci streaming admin stream-pool list \
         --compartment-id "$COMPARTMENT" \
         --name "$STREAM_POOL_NAME" \
-        --query 'data.id' --raw-output \
-        --wait-for-state ACTIVE \
-        --max-wait-seconds 120)
-    echo "     Pool created: ${POOL_ID:0:50}..."
+        --lifecycle-state ACTIVE \
+        --query 'data[0].id' --raw-output 2>/dev/null || true)
+
+    if [ -n "$EXISTING_POOL" ] && [ "$EXISTING_POOL" != "null" ]; then
+        POOL_ID="$EXISTING_POOL"
+        echo "     Pool already exists: ${POOL_ID:0:50}..."
+    else
+        POOL_ID=$(oci streaming admin stream-pool create \
+            --compartment-id "$COMPARTMENT" \
+            --name "$STREAM_POOL_NAME" \
+            --query 'data.id' --raw-output \
+            --wait-for-state ACTIVE \
+            --max-wait-seconds 120)
+        echo "     Pool created: ${POOL_ID:0:50}..."
+    fi
 fi
 
 # ── 2. Create Stream ────────────────────────────────────────
-echo "2/7  Creating Stream: $STREAM_NAME"
-EXISTING_STREAM=$(oci streaming admin stream list \
-    --compartment-id "$COMPARTMENT" \
-    --name "$STREAM_NAME" \
-    --lifecycle-state ACTIVE \
-    --query 'data[0].id' --raw-output 2>/dev/null || true)
-
-if [ -n "$EXISTING_STREAM" ] && [ "$EXISTING_STREAM" != "null" ]; then
-    STREAM_ID="$EXISTING_STREAM"
-    echo "     Stream already exists: ${STREAM_ID:0:50}..."
+if [ "$SKIP_STREAM_CREATION" = true ]; then
+    echo "2/7  Stream: using existing ($STREAM_NAME)"
 else
-    STREAM_ID=$(oci streaming admin stream create \
+    echo "2/7  Creating Stream: $STREAM_NAME"
+    EXISTING_STREAM=$(oci streaming admin stream list \
+        --compartment-id "$COMPARTMENT" \
         --name "$STREAM_NAME" \
-        --partitions "$PARTITIONS" \
-        --stream-pool-id "$POOL_ID" \
-        --query 'data.id' --raw-output \
-        --wait-for-state ACTIVE \
-        --max-wait-seconds 120)
-    echo "     Stream created: ${STREAM_ID:0:50}..."
+        --lifecycle-state ACTIVE \
+        --query 'data[0].id' --raw-output 2>/dev/null || true)
+
+    if [ -n "$EXISTING_STREAM" ] && [ "$EXISTING_STREAM" != "null" ]; then
+        STREAM_ID="$EXISTING_STREAM"
+        echo "     Stream already exists: ${STREAM_ID:0:50}..."
+    else
+        STREAM_ID=$(oci streaming admin stream create \
+            --name "$STREAM_NAME" \
+            --partitions "$PARTITIONS" \
+            --stream-pool-id "$POOL_ID" \
+            --query 'data.id' --raw-output \
+            --wait-for-state ACTIVE \
+            --max-wait-seconds 120)
+        echo "     Stream created: ${STREAM_ID:0:50}..."
+    fi
 fi
 
 # ── 3. Kafka Connection Info ───────────────────────────────
