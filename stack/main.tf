@@ -35,7 +35,7 @@ data "oci_identity_compartment" "this" {
 }
 
 data "oci_log_analytics_namespaces" "this" {
-  compartment_id = var.compartment_ocid
+  compartment_id = var.tenancy_ocid
 }
 
 locals {
