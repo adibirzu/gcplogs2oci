@@ -87,8 +87,3 @@ variable "create_iam_policies" {
   default     = true
 }
 
-variable "policy_compartment_name" {
-  description = "Compartment name for IAM policy statements (leave empty to auto-detect from OCID)"
-  type        = string
-  default     = ""
-}

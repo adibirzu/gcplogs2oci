@@ -30,10 +30,6 @@ provider "oci" {
 
 # ── Data Sources ──────────────────────────────────────────────
 
-data "oci_identity_compartment" "this" {
-  id = var.compartment_ocid
-}
-
 data "oci_log_analytics_namespaces" "this" {
   compartment_id = var.tenancy_ocid
 }
@@ -46,12 +42,6 @@ locals {
         data.oci_log_analytics_namespaces.this.namespace_collection[0].items[0].namespace,
         ""
       )
-  )
-
-  compartment_name = (
-    var.policy_compartment_name != ""
-    ? var.policy_compartment_name
-    : data.oci_identity_compartment.this.name
   )
 }
 

@@ -43,7 +43,6 @@ variableGroups:
     visible: true
     variables:
       - create_iam_policies
-      - policy_compartment_name
 
 variables:
   compartment_ocid:
@@ -127,12 +126,6 @@ variables:
     title: "Create IAM Policies"
     description: "Create policies for SCH to read streams and write to Log Analytics. Disable if they already exist."
     default: true
-
-  policy_compartment_name:
-    type: string
-    title: "Compartment Name (for policy text)"
-    description: "Leave empty to auto-detect from compartment OCID"
-    default: ""
 
 outputGroups:
   - title: "Bridge Configuration"

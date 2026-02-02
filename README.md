@@ -8,14 +8,60 @@ Stream Google Cloud Platform logs into Oracle Cloud Infrastructure Log Analytics
 
 This project implements a serverless log-shipping pipeline that extracts telemetry from **GCP Cloud Logging** via **Pub/Sub** and ingests it into **OCI Log Analytics** through **OCI Streaming**, with a custom parser that maps all GCP Cloud Logging structured fields.
 
+### Architecture
+
+```mermaid
+flowchart LR
+    subgraph GCP ["Google Cloud Platform"]
+        CL["Cloud Logging"]
+        LR["Log Router Sink"]
+        PS["Pub/Sub Topic"]
+        SUB["Pull Subscription"]
+    end
+
+    subgraph Bridge ["Bridge (pick one)"]
+        PY["Python SDK<br/>bridge/main.py"]
+        FL["Fluentd Container<br/>docker/"]
+    end
+
+    subgraph OCI ["Oracle Cloud Infrastructure"]
+        ST["OCI Streaming<br/>(Kafka-compatible)"]
+        SCH["Service Connector Hub"]
+        LA["Log Analytics<br/>44 field mappings"]
+        DASH["Dashboards &<br/>Queries"]
+    end
+
+    CL --> LR --> PS --> SUB
+    SUB --> PY --> ST
+    SUB -.-> FL -.-> ST
+    ST --> SCH --> LA --> DASH
 ```
-GCP Cloud Logging
-  → Log Router Sink
-  → Pub/Sub Topic
-  → Bridge (Python SDK or Fluentd)
-  → OCI Streaming
-  → Service Connector Hub
-  → Log Analytics (GCP Cloud Logging parser, 44 field mappings)
+
+### Provisioned Resources
+
+The setup scripts create the following resources across both cloud providers:
+
+```mermaid
+flowchart TB
+    subgraph GCP ["GCP Resources (setup_gcp.sh)"]
+        direction TB
+        G1["Pub/Sub Topic<br/><i>oci-log-export-topic</i>"]
+        G2["Pull Subscription<br/><i>fluentd-oci-bridge-sub</i>"]
+        G3["Log Router Sink<br/><i>gcp-to-oci-sink</i>"]
+        G4["Service Account<br/><i>oci-log-shipper-sa</i>"]
+        G5["IAM Bindings<br/><i>Pub/Sub Subscriber + Viewer</i>"]
+    end
+
+    subgraph OCI ["OCI Resources (setup_oci.sh)"]
+        direction TB
+        O1["Stream Pool<br/><i>MultiCloud_Log_Pool</i>"]
+        O2["Stream<br/><i>gcp-inbound-stream</i>"]
+        O3["Log Analytics Log Group<br/><i>GCPLogs</i>"]
+        O4["40 Custom Fields + JSON Parser<br/><i>44 field mappings</i>"]
+        O5["Log Analytics Source<br/><i>GCP Cloud Logging Logs</i>"]
+        O6["Service Connector Hub<br/><i>GCP-Stream-to-LogAnalytics</i>"]
+        O7["IAM Policies<br/><i>SCH stream-pull + log-analytics</i>"]
+    end
 ```
 
 Two bridge implementations are provided:
@@ -250,6 +296,20 @@ The `setup_oci.sh` script creates a custom **GCP Cloud Logging JSON Parser** in 
 
 The bridge injects `cloudProvider: "GCP"` into every log entry for multicloud dashboard filtering.
 
+### OCI Log Analytics Screenshots
+
+**Log Explorer** — GCP Cloud Logging logs with extracted fields:
+
+![GCP Logs in OCI Log Analytics](images/gcp-logs.png)
+
+**Custom Fields** — 40 GCP-specific fields created by the setup script:
+
+![GCP Custom Fields](images/gcp-fields.png)
+
+**JSON Parser** — 44 field mappings from GCP LogEntry JSON paths:
+
+![GCP Cloud Logging JSON Parser](images/gcp-parser.png)
+
 ### Supported Resource Types
 
 | Resource Type | Log Types | Key Fields Extracted |
@@ -280,6 +340,108 @@ The bridge injects `cloudProvider: "GCP"` into every log entry for multicloud da
 **Operation & Source Location** (4): Operation ID, Source File, Source Line, Source Function
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full JSON path mapping tables.
+
+## Expanding Log Collection
+
+The default `setup_gcp.sh` creates a Log Router sink with the filter `severity >= ERROR`. You can expand this to capture logs from any of the [150+ GCP services that emit audit logs](https://cloud.google.com/logging/docs/audit/services).
+
+### GCP Audit Log Types
+
+GCP Cloud Logging produces four audit log types, each with a different log name suffix:
+
+| Type | Log Name Suffix | Enabled By Default | Description |
+|------|----------------|--------------------|-------------|
+| **Admin Activity** | `activity` | Yes (always on) | Resource config/metadata changes |
+| **Data Access** | `data_access` | No (except BigQuery) | Data reads/writes, config reads |
+| **System Event** | `system_event` | Yes (always on) | Google-driven system actions |
+| **Policy Denied** | `policy` | Yes (always on) | Security policy violations |
+
+### Customizing the Log Router Filter
+
+Edit `GCP_LOG_FILTER` in `.env.local` before running `setup_gcp.sh`, or update an existing sink:
+
+```bash
+# Capture all audit logs (Admin Activity + Data Access + System Event + Policy Denied)
+GCP_LOG_FILTER='logName:"cloudaudit.googleapis.com"'
+
+# Capture all logs at INFO and above
+GCP_LOG_FILTER='severity >= INFO'
+
+# Capture audit logs from specific services
+GCP_LOG_FILTER='logName:"cloudaudit.googleapis.com" AND protoPayload.serviceName=("compute.googleapis.com" OR "storage.googleapis.com" OR "container.googleapis.com")'
+
+# Capture Cloud Run HTTP request logs + audit logs
+GCP_LOG_FILTER='resource.type="cloud_run_revision" OR logName:"cloudaudit.googleapis.com"'
+
+# Capture everything (high volume — use with caution)
+GCP_LOG_FILTER='severity >= DEFAULT'
+```
+
+To update an existing sink filter without re-running setup:
+
+```bash
+gcloud logging sinks update gcp-to-oci-sink \
+    --log-filter='logName:"cloudaudit.googleapis.com"'
+```
+
+### Common GCP Services and Their Logs
+
+The parser's 44 field mappings already cover the [LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) and [AuditLog](https://cloud.google.com/logging/docs/audit#audit_log_entry_structure) structures used by all GCP services. Key services include:
+
+| Service | `resource.type` | Log Content |
+|---------|-----------------|-------------|
+| **Compute Engine** | `gce_instance` | Instance lifecycle, SSH access, API calls |
+| **Cloud Run** | `cloud_run_revision` | HTTP requests, container stdout/stderr |
+| **GKE** | `k8s_cluster`, `k8s_container` | Cluster operations, pod logs |
+| **Cloud Storage** | `gcs_bucket` | Bucket access, object operations |
+| **BigQuery** | `bigquery_resource` | Query execution, dataset access |
+| **Cloud SQL** | `cloudsql_database` | Database operations, connections |
+| **Cloud Functions** | `cloud_function` | Function execution, errors |
+| **IAM** | `project` | Role grants, policy changes |
+| **VPC** | `gce_subnetwork` | Firewall rules, flow logs |
+| **Pub/Sub** | `pubsub_topic`, `pubsub_subscription` | Topic/subscription operations |
+| **Cloud Load Balancing** | `http_load_balancer` | Request logs with full HTTP details |
+
+### Enabling Data Access Logs
+
+Data Access audit logs are disabled by default for most services. Enable them in the GCP Console or via `gcloud`:
+
+```bash
+# Enable Data Access logs for Cloud Storage
+gcloud projects get-iam-policy $GCP_PROJECT_ID --format=json > /tmp/policy.json
+# Edit the auditConfigs section, then:
+gcloud projects set-iam-policy $GCP_PROJECT_ID /tmp/policy.json
+```
+
+Or in the GCP Console: **IAM & Admin > Audit Logs** > select service > check **Data Read** / **Data Write**.
+
+### Structured Logging from Applications
+
+Applications running on GCP (Cloud Run, GKE, Compute Engine) can emit [structured logs](https://cloud.google.com/logging/docs/structured-logging) that the parser automatically handles:
+
+```json
+{
+  "severity": "ERROR",
+  "message": "Failed to process request",
+  "httpRequest": { "requestMethod": "POST", "requestUrl": "/api/orders", "status": 500 },
+  "logging.googleapis.com/trace": "projects/my-project/traces/abc123",
+  "logging.googleapis.com/spanId": "000000000000004a"
+}
+```
+
+All `jsonPayload`, `httpRequest`, `trace`, `spanId`, and `sourceLocation` fields are extracted by the parser into OCI Log Analytics custom fields — no parser changes needed.
+
+### Parser Coverage
+
+The GCP Cloud Logging JSON parser handles **all** GCP log types without modification because:
+
+1. **Core fields** (`insertId`, `severity`, `timestamp`, `resource.type`, `logName`) are present in every LogEntry
+2. **Audit fields** (`protoPayload.*`) are extracted when present (audit logs)
+3. **HTTP fields** (`httpRequest.*`) are extracted when present (Cloud Run, Load Balancer)
+4. **Resource labels** (`resource.labels.*`) are extracted for all resource types
+5. **Missing fields** result in null values — no parsing errors
+
+To add support for new resource-specific labels, see the [Architecture doc](docs/ARCHITECTURE.md) field mapping tables.
 
 ## Docker / Fluentd Path
 
