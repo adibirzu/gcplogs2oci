@@ -69,7 +69,7 @@ Two bridge implementations are provided:
 | `oci` CLI | Latest | OCI resource provisioning |
 | OCI Python SDK | >= 2.124.0 | Bridge OCI sender + setup_oci.sh parser/field creation |
 | Docker | Optional | Fluentd production bridge |
-| Terraform | >= 1.2.0 (Optional) | OCI Resource Manager Stack deployment |
+| Terraform | >= 1.5.0 (Optional) | OCI Resource Manager Stack deployment |
 
 **GCP requirements:**
 - Project with Cloud Logging API and Pub/Sub API enabled

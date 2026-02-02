@@ -162,7 +162,7 @@ done
 
 # Key file or content
 if [ -n "${OCI_KEY_FILE:-}" ]; then
-    EXPANDED_KEY=$(eval echo "$OCI_KEY_FILE")
+    EXPANDED_KEY="${OCI_KEY_FILE/#\~/$HOME}"
     if [ -f "$EXPANDED_KEY" ]; then
         check_pass "OCI_KEY_FILE: $OCI_KEY_FILE (exists)"
     else
