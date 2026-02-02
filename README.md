@@ -2,6 +2,8 @@
 
 Stream Google Cloud Platform logs into Oracle Cloud Infrastructure Log Analytics — without VMs.
 
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/adibirzu/gcplogs2oci/archive/refs/heads/main.zip)
+
 ## Overview
 
 This project implements a serverless log-shipping pipeline that extracts telemetry from **GCP Cloud Logging** via **Pub/Sub** and ingests it into **OCI Log Analytics** through **OCI Streaming**, with a custom parser that maps all GCP Cloud Logging structured fields.
@@ -155,38 +157,48 @@ Deletion order respects resource dependencies (e.g., Service Connector Hub is de
 
 ## OCI Resource Manager (Terraform) Deployment
 
-For a guided deployment via the OCI Console:
+### One-click deploy
 
-1. **Package the stack:**
-   ```bash
-   cd stack && zip -r ../gcplogs2oci-stack.zip . && cd ..
-   ```
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/adibirzu/gcplogs2oci/archive/refs/heads/main.zip)
 
-2. **Upload to OCI Resource Manager:**
-   - Navigate to **OCI Console > Developer Services > Resource Manager > Stacks**
-   - Click **Create Stack** > Upload `.zip` file
-   - Fill in the form (compartment, stream names, etc.)
-   - Click **Plan** then **Apply**
+1. Click the button above, sign in to your OCI tenancy
+2. Select **`stack/`** as the working directory when prompted
+3. Fill in the form (compartment, region, stream names, etc.)
+4. Click **Plan** then **Apply**
 
-3. **Create Log Analytics custom content** (parser, fields, source):
-   ```bash
-   pip install oci    # if not already installed
-   export LA_NAMESPACE="<your-namespace>"
-   export OCI_COMPARTMENT_ID="<your-compartment-ocid>"
-   python3 stack/scripts/setup_log_analytics.py
-   ```
+### Manual upload
 
-4. **Or apply locally with Terraform:**
-   ```bash
-   cd stack
-   terraform init
-   terraform plan -var="compartment_ocid=ocid1.compartment..." \
-                  -var="region=eu-frankfurt-1" \
-                  -var="tenancy_ocid=ocid1.tenancy..."
-   terraform apply
-   ```
+Alternatively, package and upload the stack yourself:
 
-The stack creates the same OCI resources as `setup_oci.sh` (Stream Pool, Stream, Log Group, SCH, IAM policies).  The Python helper script handles Log Analytics custom content (40 fields, 44-mapping JSON parser, source) which has no Terraform provider support.
+```bash
+cd stack && zip -r ../gcplogs2oci-stack.zip . && cd ..
+```
+
+Then navigate to **OCI Console > Developer Services > Resource Manager > Stacks > Create Stack** and upload the `.zip` file.
+
+### Create Log Analytics custom content
+
+After the stack is applied, create the parser, fields, and source (not supported by the Terraform provider):
+
+```bash
+pip install oci    # if not already installed
+export LA_NAMESPACE="<your-namespace>"
+export OCI_COMPARTMENT_ID="<your-compartment-ocid>"
+python3 stack/scripts/setup_log_analytics.py
+```
+
+### Local Terraform apply
+
+```bash
+cd stack
+terraform init
+terraform plan -var="compartment_ocid=ocid1.compartment..." \
+               -var="region=eu-frankfurt-1" \
+               -var="tenancy_ocid=ocid1.tenancy..."
+terraform apply
+```
+
+The stack creates the same OCI resources as `setup_oci.sh` (Stream Pool, Stream, Log Group, SCH, IAM policies). The Python helper script handles Log Analytics custom content (40 fields, 44-mapping JSON parser, source) which has no Terraform provider support.
 
 ## Configuration
 
