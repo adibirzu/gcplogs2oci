@@ -80,6 +80,7 @@ Two bridge implementations are provided:
 │   ├── oci_stream_sender.py # OCI Streaming PutMessages sender + batching
 │   └── main.py              # CLI entry point (--drain / continuous)
 ├── scripts/
+│   ├── setup.sh             # Unified setup wizard (orchestrates everything below)
 │   ├── setup_gcp.sh         # Provision GCP resources (topic, sub, sink, SA)
 │   ├── setup_oci.sh         # Provision OCI resources (stream, log group, parser, source, SCH)
 │   ├── destroy_gcp.sh       # Tear down all GCP resources (reverse of setup)
@@ -131,39 +132,103 @@ Two bridge implementations are provided:
 
 ## Quick Start
 
+The unified setup wizard handles the entire provisioning flow — prerequisites, authentication, GCP resources, OCI resources, credential validation, and an optional end-to-end test:
+
+```bash
+# 1. Install dependencies
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Authenticate both clouds
+gcloud auth application-default login
+oci setup config   # if not already configured
+
+# 3. Run the setup wizard (interactive)
+./scripts/setup.sh
+```
+
+The wizard walks through 10 steps, probes existing resources, and only creates what's missing. For CI/non-interactive environments:
+
+```bash
+# Non-interactive with all defaults
+./scripts/setup.sh --auto --skip-tests
+
+# Preview what would be done
+./scripts/setup.sh --dry-run
+
+# Full non-interactive run including end-to-end test
+./scripts/setup.sh --auto --e2e
+```
+
+<details>
+<summary>Manual step-by-step (without the wizard)</summary>
+
 ```bash
 # 1. Configure
 cp .env.example .env.local   # fill in GCP + OCI values
 
-# 2. Install
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Authenticate GCP (Application Default Credentials)
-gcloud auth application-default login
-
-# 4. Provision GCP (topic, subscription, Log Router sink)
+# 2. Provision GCP (topic, subscription, Log Router sink)
 ./scripts/setup_gcp.sh
 
-# 5. Provision OCI (stream, log group, parser, source, Service Connector Hub)
+# 3. Provision OCI (stream, log group, parser, source, Service Connector Hub)
 ./scripts/setup_oci.sh
 
-# 6. Validate credentials
+# 4. Validate credentials
 python scripts/test_gcp_credentials.py
 python scripts/test_oci_credentials.py
 
-# 7. Check infrastructure status
+# 5. Check infrastructure status
 ./scripts/status.sh
 
-# 8. Test end-to-end
+# 6. Test end-to-end
 python scripts/publish_test_message.py --count 5
 python -m bridge.main --drain
 
-# 9. Run continuously
+# 7. Run continuously
 python -m bridge.main
 ```
 
+</details>
+
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for the full walkthrough.
+
+## Unified Setup Wizard
+
+`./scripts/setup.sh` is a 10-step interactive wizard that orchestrates the full GCP + OCI provisioning pipeline. It probes existing resources, shows what exists vs what's missing, delegates to the individual setup scripts, validates credentials, and optionally runs an end-to-end test.
+
+| Flag | Description |
+|------|-------------|
+| `--auto` | Non-interactive mode (skip confirmations, use defaults) |
+| `--skip-tests` | Skip credential validation and end-to-end test |
+| `--dry-run` | Show what would be done without executing |
+| `--force` | Pass `--force` to child scripts |
+| `--e2e` | Include end-to-end test (publish + drain) |
+
+### Wizard Walkthrough
+
+**Steps 1-3** — Check prerequisites (CLIs, Python SDKs), verify `.env.local`, confirm GCP authentication:
+
+![Setup wizard steps 1-3: prerequisites, env, GCP auth](images/gcp-setup.png)
+
+**Step 4** — Probe GCP resources and delegate to `setup_gcp.sh` for any missing resources:
+
+![Step 4: GCP resource probing and provisioning prompt](images/gcp-setup-1.png)
+
+**Step 4 (continued)** — `setup_gcp.sh` creates the Pub/Sub topic, subscription, Log Router sink, service account, and IAM bindings:
+
+![Step 4: setup_gcp.sh creating resources](images/gcp-setup-2.png)
+
+**Steps 5-7** — Validate GCP credentials, check OCI authentication, probe OCI resources:
+
+![Steps 5-7: GCP credential validation, OCI auth, OCI resource probing](images/gcp-setup-3.png)
+
+**Steps 8-9** — Validate OCI credentials and run the optional end-to-end test (publish a message, drain the bridge):
+
+![Steps 8-9: OCI credential validation and end-to-end test](images/gcp-setup-4.png)
+
+**Step 10** — Final infrastructure status report via `status.sh`:
+
+![Step 10: final status report](images/gcp-setup-5.png)
 
 ## Managing Infrastructure
 

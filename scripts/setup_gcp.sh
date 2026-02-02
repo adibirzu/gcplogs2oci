@@ -137,6 +137,7 @@ echo "     Granting sink writer ($SINK_SA) publish access..."
 gcloud pubsub topics add-iam-policy-binding "$TOPIC" \
     --member="$SINK_SA" \
     --role="roles/pubsub.publisher" \
+    --condition=None \
     --quiet
 echo "     IAM binding set."
 
@@ -156,6 +157,7 @@ for ROLE in roles/pubsub.subscriber roles/pubsub.viewer; do
     gcloud projects add-iam-policy-binding "$PROJECT" \
         --member="serviceAccount:$SA_EMAIL" \
         --role="$ROLE" \
+        --condition=None \
         --quiet
 done
 echo "     Roles granted."
