@@ -26,7 +26,7 @@ flowchart LR
 
     subgraph OCI ["Oracle Cloud Infrastructure"]
         ST["OCI Streaming<br/>(Kafka-compatible)"]
-        SCH["Service Connector Hub"]
+        SCH["Connector Hub"]
         LA["Log Analytics<br/>44 field mappings"]
         DASH["Dashboards &<br/>Queries"]
     end
@@ -59,8 +59,8 @@ flowchart TB
         O3["Log Analytics Log Group<br/><i>GCPLogs</i>"]
         O4["40 Custom Fields + JSON Parser<br/><i>44 field mappings</i>"]
         O5["Log Analytics Source<br/><i>GCP Cloud Logging Logs</i>"]
-        O6["Service Connector Hub<br/><i>GCP-Stream-to-LogAnalytics</i>"]
-        O7["IAM Policies<br/><i>SCH stream-pull + log-analytics</i>"]
+        O6["Connector Hub<br/><i>GCP-Stream-to-LogAnalytics</i>"]
+        O7["IAM Policies<br/><i>SCH stream-pull/consume + log-analytics</i>"]
     end
 ```
 
@@ -82,7 +82,9 @@ Two bridge implementations are provided:
 ├── scripts/
 │   ├── setup.sh             # Unified setup wizard (orchestrates everything below)
 │   ├── setup_gcp.sh         # Provision GCP resources (topic, sub, sink, SA)
-│   ├── setup_oci.sh         # Provision OCI resources (stream, log group, parser, source, SCH)
+│   ├── setup_oci.sh         # Provision OCI resources (stream, log group, parser, source, Connector Hub)
+│   ├── setup_gcp_iam.sh     # Apply recommended GCP IAM bindings (runtime + optional setup roles)
+│   ├── setup_oci_iam.sh     # Apply recommended OCI IAM policies (SCH + optional group policies)
 │   ├── destroy_gcp.sh       # Tear down all GCP resources (reverse of setup)
 │   ├── destroy_oci.sh       # Tear down all OCI resources (reverse of setup)
 │   ├── status.sh            # Audit all resources and configuration
@@ -97,13 +99,14 @@ Two bridge implementations are provided:
 │   ├── main.tf              # Provider, data sources, resource blocks
 │   ├── variables.tf         # Input variables
 │   ├── outputs.tf           # Output values (OCIDs, endpoints)
-│   ├── iam.tf               # IAM policies for Service Connector Hub
+│   ├── iam.tf               # IAM policies for Connector Hub
 │   ├── schema.yaml          # OCI Console UI form definition
 │   └── scripts/
 │       └── setup_log_analytics.py  # Custom fields, parser, source
 ├── docs/
 │   ├── ARCHITECTURE.md      # Data flow, components, failure modes, field mapping
-│   └── QUICKSTART.md        # Step-by-step deployment guide
+│   ├── QUICKSTART.md        # Step-by-step deployment guide
+│   └── IAM_PRIVILEGES.md    # Service-by-service IAM recommendations + helper scripts
 ├── .env.example             # Configuration template (copy to .env.local)
 ├── requirements.txt         # Python dependencies
 └── LICENSE.txt              # UPL v1.0
@@ -128,7 +131,17 @@ Two bridge implementations are provided:
 - Tenancy with Streaming and Log Analytics services enabled
 - **Log Analytics onboarded** (OCI Console > Observability & Management > Log Analytics > "Start Using Log Analytics")
 - API signing key configured (`oci setup config`) and **public key uploaded** to OCI Console (Identity > Users > API Keys)
-- IAM policies: user must manage streams, log-analytics, and service-connectors in the target compartment (see [QUICKSTART.md](docs/QUICKSTART.md#required-iam-policies-oci))
+- IAM policies: user/service groups need stream, Log Analytics, and Connector Hub permissions (see [docs/IAM_PRIVILEGES.md](docs/IAM_PRIVILEGES.md))
+
+## Service Documentation References
+
+| CSP | Service | Official Documentation |
+|-----|---------|------------------------|
+| GCP | Cloud Logging | [Cloud Logging docs](https://docs.cloud.google.com/logging/docs) |
+| GCP | Pub/Sub | [Pub/Sub overview](https://docs.cloud.google.com/pubsub/docs/overview) |
+| OCI | Streaming | [OCI Streaming docs](https://docs.oracle.com/en-us/iaas/Content/Streaming/home.htm) |
+| OCI | Log Analytics | [OCI Log Analytics docs](https://docs.oracle.com/en-us/iaas/log-analytics/home.htm) |
+| OCI | Connector Hub (formerly Service Connector Hub) | [OCI Connector Hub overview](https://docs.oracle.com/en-us/iaas/Content/connector-hub/overview.htm) |
 
 ## Quick Start
 
@@ -170,21 +183,25 @@ cp .env.example .env.local   # fill in GCP + OCI values
 # 2. Provision GCP (topic, subscription, Log Router sink)
 ./scripts/setup_gcp.sh
 
-# 3. Provision OCI (stream, log group, parser, source, Service Connector Hub)
+# 3. Apply IAM recommendations (both clouds)
+./scripts/setup_gcp_iam.sh
+./scripts/setup_oci_iam.sh
+
+# 4. Provision OCI (stream, log group, parser, source, Connector Hub)
 ./scripts/setup_oci.sh
 
-# 4. Validate credentials
+# 5. Validate credentials
 python scripts/test_gcp_credentials.py
 python scripts/test_oci_credentials.py
 
-# 5. Check infrastructure status
+# 6. Check infrastructure status
 ./scripts/status.sh
 
-# 6. Test end-to-end
+# 7. Test end-to-end
 python scripts/publish_test_message.py --count 5
 python -m bridge.main --drain
 
-# 7. Run continuously
+# 8. Run continuously
 python -m bridge.main
 ```
 
@@ -256,7 +273,7 @@ Remove all resources created by the setup scripts:
 ./scripts/destroy_oci.sh --force
 ```
 
-Deletion order respects resource dependencies (e.g., Service Connector Hub is deleted before Stream). Both scripts handle already-deleted resources gracefully.
+Deletion order respects resource dependencies (e.g., Connector Hub is deleted before Stream). Both scripts handle already-deleted resources gracefully.
 
 ### Full reset cycle
 
@@ -338,7 +355,11 @@ The bridge uses **Application Default Credentials (ADC)**. For local development
 gcloud auth application-default login
 ```
 
-For CI/production, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file. The service account needs roles: `Pub/Sub Subscriber`, `Pub/Sub Viewer`.
+For CI/production, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file. Recommended bridge IAM:
+- `roles/pubsub.subscriber` on the bridge subscription
+- `roles/pubsub.viewer` on the bridge topic/subscription (diagnostics)
+
+Use `./scripts/setup_gcp_iam.sh` to apply these bindings.
 
 ### Optional Variables
 
@@ -348,7 +369,7 @@ For CI/production, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key
 | `GCP_LOG_FILTER` | `severity >= DEFAULT` | Log Router sink filter |
 | `OCI_LOG_ANALYTICS_NAMESPACE` | Auto-detected | Log Analytics namespace |
 | `OCI_LOG_GROUP_NAME` | `GCPLogs` | Log Analytics log group name |
-| `OCI_SCH_NAME` | `GCP-Stream-to-LogAnalytics` | Service Connector Hub name |
+| `OCI_SCH_NAME` | `GCP-Stream-to-LogAnalytics` | Connector Hub name |
 | `MAX_BATCH_SIZE` | `100` | Max messages per OCI batch |
 | `MAX_BATCH_BYTES` | `1048576` | Max batch size in bytes |
 | `INACTIVITY_TIMEOUT` | `30` | Seconds before drain mode exits |
@@ -524,7 +545,7 @@ Secrets are mounted from OCI Vault — see [docs/ARCHITECTURE.md](docs/ARCHITECT
 
 - **No embedded secrets**: All credentials are loaded from `.env.local` (local) or OCI Vault (production)
 - **ADC preferred**: GCP authentication uses Application Default Credentials, no key file needed for local dev
-- **Least privilege**: GCP service account has only Pub/Sub Subscriber + Viewer roles
+- **Least privilege**: GCP bridge SA uses resource-scoped Pub/Sub roles; OCI policies are scoped per runtime principal (see `docs/IAM_PRIVILEGES.md`)
 - **Private networking**: Container Instance runs in a private subnet with NAT gateway
 - **Git safety**: `.gitignore` excludes `.env.local`, `*.pem`, `*.key`, and `gcp-sa-key.json`
 

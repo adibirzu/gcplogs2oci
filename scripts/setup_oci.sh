@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
 # setup_oci.sh – Provision OCI Streaming, Log Analytics, and
-#                Service Connector Hub resources for the
+#                Connector Hub resources for the
 #                GCP → OCI log pipeline.
 #
 # Creates:
@@ -10,7 +10,7 @@
 #   3. Log Analytics custom fields (GCP Cloud Logging schema)
 #   4. Log Analytics JSON parser (GCP Cloud Logging JSON Parser)
 #   5. Log Analytics source (GCP Cloud Logging Logs)
-#   6. Service Connector Hub (Stream → Log Analytics)
+#   6. Connector Hub (Stream → Log Analytics)
 #
 # Prerequisites:
 #   - oci CLI configured (oci setup config)
@@ -588,8 +588,8 @@ JSONEOF
     fi
 fi
 
-# ── 7. Create Service Connector Hub ─────────────────────────
-echo "7/7  Creating Service Connector Hub: $SCH_NAME"
+# ── 7. Create Connector Hub ─────────────────────────────────
+echo "7/7  Creating Connector Hub: $SCH_NAME"
 
 EXISTING_SCH=$(oci sch service-connector list \
     --compartment-id "$COMPARTMENT" \
@@ -633,8 +633,9 @@ JSONEOF
         echo "     SCH created: ${SCH_ID:0:50}..."
     else
         echo "     SCH creation may need manual setup (check IAM policies)"
-        echo "     Required policy: Allow any-user to {STREAM_READ, STREAM_CONSUME} in compartment <name>"
-        echo "                      Allow any-user to use loganalytics-log-group in compartment <name>"
+        echo "     Run: ./scripts/setup_oci_iam.sh --sch-only"
+        echo "     Required policy: Allow any-user to use stream-pull + stream-consume"
+        echo "                      Allow any-user to use log-analytics-log-group"
     fi
 fi
 
@@ -666,7 +667,7 @@ echo "  │ Log Analytics Log Group  │ $LOG_GROUP_NAME                    │"
 echo "  │ Custom Fields            │ 40 GCP-specific fields             │"
 echo "  │ JSON Parser              │ $PARSER_NAME (44 mappings)         │"
 echo "  │ Log Analytics Source     │ $SOURCE_NAME                       │"
-echo "  │ Service Connector Hub    │ $SCH_NAME                          │"
+echo "  │ Connector Hub            │ $SCH_NAME                          │"
 echo "  └──────────────────────────┴────────────────────────────────────┘"
 echo ""
 echo "  Pipeline:"

@@ -33,7 +33,7 @@ Pull Subscription (fluentd-oci-bridge-sub)
 OCI Streaming (gcp-inbound-stream)
       │  ← Kafka-compatible, partitioned buffer
       ▼
-Service Connector Hub (GCP-Stream-to-LogAnalytics)
+Connector Hub (GCP-Stream-to-LogAnalytics)
       │  ← Managed cursor, auto-retry
       ▼
 OCI Log Analytics
@@ -52,7 +52,7 @@ Dashboards & Queries
 | Primary Buffer   | GCP Pub/Sub                  | gRPC / REST      | 7-day retention, pull delivery     |
 | Forwarder        | Python bridge / Fluentd      | gRPC → REST/Kafka| Stateless, restartable             |
 | Secondary Buffer | OCI Streaming                | Kafka (TCP/9092) | Partitioned, configurable retention|
-| Orchestration    | Service Connector Hub        | Internal         | Managed cursor, retry              |
+| Orchestration    | Connector Hub                | Internal         | Managed cursor, retry              |
 | Parsing          | GCP Cloud Logging JSON Parser| Internal         | 44 JSON field mappings             |
 | Destination      | OCI Log Analytics            | Internal         | Indexed, queryable, dashboardable  |
 
@@ -68,7 +68,7 @@ The setup script provisions **7 resources** in sequence:
 | 4 | Log Group | Log Analytics | `GCPLogs` target group |
 | 5 | Fields + Parser | Log Analytics | 40 custom fields + JSON parser with 44 mappings |
 | 6 | Source | Log Analytics | `GCP Cloud Logging Logs` source (references parser) |
-| 7 | Service Connector Hub | SCH | Streaming → Log Analytics connector |
+| 7 | Connector Hub | SCH | Streaming → Log Analytics connector |
 
 ## Log Analytics Field Mapping
 
@@ -197,11 +197,11 @@ The parser handles partial field extraction — fields not present in a particul
 - **OCI credentials**: API signing key via file path (local) or inline PEM (CI); auth token for Kafka interface
 - **Network**: Container Instance runs in private subnet with NAT gateway (outbound only)
 - **Encryption**: TLS 1.2 in transit, AES-256 at rest (both clouds)
-- **Least privilege**: GCP SA has only Pub/Sub Subscriber + Viewer roles
+- **Least privilege**: GCP bridge SA uses resource-scoped Pub/Sub roles; OCI uses explicit SCH/bridge policies (see `docs/IAM_PRIVILEGES.md`)
 
 ## Failure Modes
 
 1. **Bridge crash**: GCP Pub/Sub retains unacknowledged messages; bridge resumes from last checkpoint
 2. **OCI Streaming down**: Python bridge buffer fills and backpressure stops pulls; Fluentd `overflow_action block` does the same
-3. **Log Analytics maintenance**: Service Connector Hub holds its cursor; Stream retains data (configurable up to 7 days)
+3. **Log Analytics maintenance**: Connector Hub holds its cursor; Stream retains data (configurable up to 7 days)
 4. **Parser mismatch**: JSON parser extracts null for missing fields (no errors); raw JSON is always stored in `Original Log Content`

@@ -33,7 +33,7 @@ output "log_analytics_namespace" {
 }
 
 output "service_connector_id" {
-  description = "OCID of the Service Connector Hub"
+  description = "OCID of the Connector Hub"
   value       = oci_sch_service_connector.gcp_bridge.id
 }
 

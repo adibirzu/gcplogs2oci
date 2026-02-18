@@ -152,15 +152,23 @@ else
     echo "     Service account created."
 fi
 
-echo "     Granting Pub/Sub Subscriber + Viewer roles..."
-for ROLE in roles/pubsub.subscriber roles/pubsub.viewer; do
-    gcloud projects add-iam-policy-binding "$PROJECT" \
-        --member="serviceAccount:$SA_EMAIL" \
-        --role="$ROLE" \
-        --condition=None \
-        --quiet
-done
-echo "     Roles granted."
+echo "     Granting least-privilege Pub/Sub roles (resource-scoped)..."
+gcloud pubsub subscriptions add-iam-policy-binding "$SUBSCRIPTION" \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/pubsub.subscriber" \
+    --condition=None \
+    --quiet
+gcloud pubsub subscriptions add-iam-policy-binding "$SUBSCRIPTION" \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/pubsub.viewer" \
+    --condition=None \
+    --quiet
+gcloud pubsub topics add-iam-policy-binding "$TOPIC" \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/pubsub.viewer" \
+    --condition=None \
+    --quiet
+echo "     Resource-scoped roles granted on subscription/topic."
 
 # ── 5. Generate Service Account Key ─────────────────────────
 KEY_FILE="$PROJECT_DIR/gcp-sa-key.json"
@@ -188,7 +196,7 @@ echo "  │ Pull Subscription    │ $SUBSCRIPTION                   │"
 echo "  │ Log Router Sink      │ $SINK_NAME                      │"
 echo "  │ Sink Filter          │ $LOG_FILTER                     │"
 echo "  │ Service Account      │ $SA_EMAIL                       │"
-echo "  │ IAM Roles            │ pubsub.subscriber, pubsub.viewer│"
+echo "  │ IAM Roles            │ sub:subscriber+viewer, topic:viewer │"
 echo "  │ SA Key File          │ $KEY_FILE                       │"
 echo "  └──────────────────────┴─────────────────────────────────┘"
 echo ""

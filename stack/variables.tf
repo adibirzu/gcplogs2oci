@@ -65,16 +65,16 @@ variable "log_analytics_namespace" {
   default     = ""
 }
 
-# --- Service Connector Hub ---
+# --- Connector Hub ---
 
 variable "sch_name" {
-  description = "Service Connector Hub display name"
+  description = "Connector Hub display name"
   type        = string
   default     = "GCP-Stream-to-LogAnalytics"
 }
 
 variable "sch_description" {
-  description = "Service Connector Hub description"
+  description = "Connector Hub description"
   type        = string
   default     = "Forwards GCP logs from OCI Streaming to Log Analytics using GCP Cloud Logging parser"
 }
@@ -86,4 +86,3 @@ variable "create_iam_policies" {
   type        = bool
   default     = true
 }
-

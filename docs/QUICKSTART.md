@@ -12,7 +12,28 @@ End-to-end setup from zero to seeing GCP logs in OCI Log Analytics.
 | **OCI Python SDK** | `oci >= 2.124.0` (included in `requirements.txt`; needed by `setup_oci.sh` for field/parser creation) |
 | **Docker** | Optional — only needed for the Fluentd production path |
 
-### Required IAM Policies (OCI)
+### Required IAM Privileges
+
+This repository now includes IAM helper scripts for both clouds:
+
+```bash
+./scripts/setup_gcp_iam.sh
+./scripts/setup_oci_iam.sh
+```
+
+The exact privilege matrix is documented in [IAM_PRIVILEGES.md](IAM_PRIVILEGES.md).
+
+Used service references:
+
+| CSP | Service | Documentation |
+|---|---|---|
+| GCP | Cloud Logging | [Cloud Logging docs](https://docs.cloud.google.com/logging/docs) |
+| GCP | Pub/Sub | [Pub/Sub overview](https://docs.cloud.google.com/pubsub/docs/overview) |
+| OCI | Streaming | [OCI Streaming docs](https://docs.oracle.com/en-us/iaas/Content/Streaming/home.htm) |
+| OCI | Log Analytics | [OCI Log Analytics docs](https://docs.oracle.com/en-us/iaas/log-analytics/home.htm) |
+| OCI | Connector Hub (formerly Service Connector Hub) | [OCI Connector Hub overview](https://docs.oracle.com/en-us/iaas/Content/connector-hub/overview.htm) |
+
+#### OCI
 
 The user running `setup_oci.sh` needs these permissions in the target compartment:
 
@@ -24,11 +45,22 @@ Allow group <group> to manage loganalytics-features-family in compartment <compa
 Allow group <group> to manage serviceconnectors in compartment <compartment>
 ```
 
-The Service Connector Hub also needs a policy to read from the stream:
+Connector Hub (formerly Service Connector Hub) also needs policies to consume the stream and write to Log Analytics:
 
 ```
 Allow any-user to use stream-pull in compartment <compartment> where all {request.principal.type='serviceconnector'}
+Allow any-user to use stream-consume in compartment <compartment> where all {request.principal.type='serviceconnector'}
 Allow any-user to use log-analytics-log-group in compartment <compartment> where all {request.principal.type='serviceconnector'}
+```
+
+#### GCP
+
+For bridge runtime (service account), recommended least privilege is:
+
+```
+roles/pubsub.subscriber on the bridge subscription
+roles/pubsub.viewer on the bridge subscription/topic (diagnostics)
+roles/pubsub.publisher on the bridge topic for the Log Router sink writer identity
 ```
 
 ### Onboard OCI Log Analytics
@@ -63,7 +95,7 @@ The bridge uses **Application Default Credentials (ADC)** — no service account
 gcloud auth application-default login
 ```
 
-For CI/production environments, create a service account with `Pub/Sub Subscriber` and `Pub/Sub Viewer` roles, download a JSON key, and set:
+For CI/production environments, create a service account with the Pub/Sub runtime roles above, download a JSON key, and set:
 
 ```
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/gcp-sa-key.json
@@ -98,6 +130,12 @@ This creates:
 - **Log Router sink** (`gcp-to-oci-sink`) routing matching logs to the topic
 - **Service account** IAM bindings for Pub/Sub access
 
+Apply recommended GCP IAM bindings (idempotent):
+
+```bash
+./scripts/setup_gcp_iam.sh
+```
+
 Validate GCP credentials:
 
 ```bash
@@ -106,7 +144,13 @@ python scripts/test_gcp_credentials.py
 
 ## 3. Provision OCI Resources
 
-Ensure the [IAM policies listed above](#required-iam-policies-oci) are in place — both the **user policies** (to create resources) and the **SCH policies** (to allow Service Connector Hub to read streams and write to Log Analytics).
+Apply the recommended OCI IAM policies first (idempotent):
+
+```bash
+./scripts/setup_oci_iam.sh
+```
+
+This applies Connector Hub runtime policy and, when configured, optional operator/bridge group policies.
 
 ```bash
 # Creates 7 resources: Stream Pool, Stream, Log Group, custom fields, parser, source, SCH
@@ -121,7 +165,7 @@ The script automatically provisions the full pipeline in 7 steps:
 4. **Log Analytics Log Group** — `GCPLogs` (or custom name via `OCI_LOG_GROUP_NAME`)
 5. **Custom fields + JSON parser** — 40 GCP-specific fields and a 44-mapping JSON parser covering all [GCP Cloud Logging](https://cloud.google.com/logging/docs/structured-logging) resource types (audit, Cloud Run, Pub/Sub, etc.)
 6. **Log Analytics source** — `GCP Cloud Logging Logs` source using the custom parser
-7. **Service Connector Hub** — `GCP-Stream-to-LogAnalytics` connecting stream to log group
+7. **Connector Hub** — `GCP-Stream-to-LogAnalytics` connecting stream to log group
 
 After setup, **update `.env.local`** with the printed values:
 
@@ -163,7 +207,7 @@ Bridge stopped | processed=5 | sent=5 | failed=0 | errors=0 | batches=1
 
 ### Verify in OCI Log Analytics:
 
-After the bridge sends messages, the Service Connector Hub automatically forwards them from the stream to Log Analytics. Query using the OCI CLI:
+After the bridge sends messages, Connector Hub automatically forwards them from the stream to Log Analytics. Query using the OCI CLI:
 
 ```bash
 # macOS:

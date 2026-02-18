@@ -287,14 +287,14 @@ else
         check_skip "Log Analytics resources (no namespace)"
     fi
 
-    # Service Connector Hub
+    # Connector Hub
     SCH_ID=$(oci sch service-connector list \
         --compartment-id "$COMPARTMENT" \
         --display-name "$SCH_NAME" \
         --lifecycle-state ACTIVE \
         --query 'data.items[0].id' --raw-output 2>/dev/null || true)
     if [ -n "$SCH_ID" ] && [ "$SCH_ID" != "null" ] && [ "$SCH_ID" != "None" ]; then
-        check_pass "Service Connector Hub: $SCH_NAME (ACTIVE)"
+        check_pass "Connector Hub: $SCH_NAME (ACTIVE)"
     else
         # Check if it exists but in non-ACTIVE state
         SCH_ANY=$(oci sch service-connector list \
@@ -302,9 +302,9 @@ else
             --display-name "$SCH_NAME" \
             --query 'data.items[0]."lifecycle-state"' --raw-output 2>/dev/null || true)
         if [ -n "$SCH_ANY" ] && [ "$SCH_ANY" != "null" ] && [ "$SCH_ANY" != "None" ]; then
-            check_warn "Service Connector Hub: $SCH_NAME ($SCH_ANY)"
+            check_warn "Connector Hub: $SCH_NAME ($SCH_ANY)"
         else
-            check_fail "Service Connector Hub: $SCH_NAME (not found)"
+            check_fail "Connector Hub: $SCH_NAME (not found)"
         fi
     fi
 fi

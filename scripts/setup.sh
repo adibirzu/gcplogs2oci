@@ -426,16 +426,16 @@ else
         ((OCI_MISSING++))
     fi
 
-    # Service Connector Hub
+    # Connector Hub
     SCH_ID=$(oci sch service-connector list \
         --compartment-id "$COMPARTMENT" \
         --display-name "$SCH_NAME" \
         --lifecycle-state ACTIVE \
         --query 'data.items[0].id' --raw-output 2>/dev/null || true)
     if [ -n "$SCH_ID" ] && [ "$SCH_ID" != "null" ] && [ "$SCH_ID" != "None" ]; then
-        status_ok "Service Connector Hub: $SCH_NAME"
+        status_ok "Connector Hub: $SCH_NAME"
     else
-        status_fail "Service Connector Hub: $SCH_NAME"
+        status_fail "Connector Hub: $SCH_NAME"
         ((OCI_MISSING++))
     fi
 fi

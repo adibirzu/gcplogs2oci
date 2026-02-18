@@ -2,7 +2,7 @@
 # main.tf – OCI resources for the gcplogs2oci pipeline
 #
 # Creates: Stream Pool, Stream, Log Analytics Log Group,
-#          Service Connector Hub (Stream → Log Analytics).
+#          Connector Hub (Stream → Log Analytics).
 #
 # Log Analytics custom content (fields, parser, source) is NOT
 # supported by the Terraform provider.  After applying this
@@ -83,7 +83,7 @@ resource "oci_log_analytics_log_analytics_log_group" "gcp_logs" {
   }
 }
 
-# ── 4. Service Connector Hub ─────────────────────────────────
+# ── 4. Connector Hub ─────────────────────────────────────────
 
 resource "oci_sch_service_connector" "gcp_bridge" {
   compartment_id = var.compartment_ocid

@@ -3,7 +3,7 @@
 # destroy_oci.sh – Remove all OCI resources created by setup_oci.sh
 #
 # Deletes (in dependency-safe order):
-#   1. Service Connector Hub
+#   1. Connector Hub
 #   2. Log Analytics Source
 #   3. Log Analytics Parser + 40 custom fields (via Python SDK)
 #   4. Log Analytics Log Group
@@ -94,8 +94,8 @@ fi
 DELETED=0
 SKIPPED=0
 
-# ── 1. Delete Service Connector Hub ──────────────────────────
-echo "1/7  Deleting Service Connector Hub: $SCH_NAME"
+# ── 1. Delete Connector Hub ──────────────────────────────────
+echo "1/7  Deleting Connector Hub: $SCH_NAME"
 SCH_ID=$(oci sch service-connector list \
     --compartment-id "$COMPARTMENT" \
     --display-name "$SCH_NAME" \
